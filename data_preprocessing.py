@@ -6,18 +6,76 @@ import tqdm
 from datetime import datetime
 import json
 import matplotlib.pyplot as plt
+from path_recommendation import group_students
 
 class DataPreprocessing:
   
   def __init__(self):
     self.client = MongoClient("mongodb://root:hf6Wbg3dm8@dds-3ns35de5eee23e941756-pub.mongodb.rds.aliyuncs.com:3717,dds-3ns35de5eee23e942366-pub.mongodb.rds.aliyuncs.com:3717/admin?replicaSet=mgset-33008719")
-    self.db = self.client['stg_mathaday_assessment']
+    self.db = self.client['pro_mathaday_assessment']
     self.question_records = self.db['assessment_question_records']
-    self.assessments = self.db['assessments']
 
-    self.userIds = self.load_csv("user_id.csv")
-    self.questionIds = self.load_csv("assessment_question_id.csv")
+    self.userIds = self.load_user_ids()
+    self.questionIds = self.load_question_ids()
 
+  def load_user_ids(self):
+    user_ids = self.question_records.distinct('userId')
+    self.save_json(user_ids, "data/user_id.json")
+    return user_ids
+
+  def load_question_ids(self):
+    question_ids = self.question_records.distinct('assessmentQuestionId')
+    self.save_json(question_ids, "data/assessment_question_id.json")
+    return question_ids
+
+  def load_assessments(self):
+    assessments_table = dataPreprocessing.db["assessments"]
+    assessments = assessments_table.find({})
+    assessment_info = {}
+    for assessment in tqdm.tqdm(assessments):
+      assessment_info[assessment["id"]] = {
+        "type": assessment["type"],
+        "syllabi": [syllable.get("unitId") for syllable in assessment.get("syllabi")]
+      }
+
+    self.save_json(assessment_info, "data/assessment_info.json")
+    return assessment_info
+
+  def load_assessment_questions(self):
+    assessment_questions_table = dataPreprocessing.db["assessment_questions"]
+    assessment_questions = assessment_questions_table.find({})
+    assessment_question_info = {}
+    for assessment_question in tqdm.tqdm(assessment_questions):
+      assessment_question_info[assessment_question["itemId"]] = {
+        "difficulty": self.convert_difficulty_to_num(assessment_question["difficulty"]),
+        "grade": assessment_question["grade"]
+      }
+    self.save_json(assessment_question_info, "data/assessment_question_info.json")
+    return assessment_question_info
+
+  def convert_difficulty_to_num(self, difficulty):
+    if difficulty == "easy":
+      return 1
+    elif difficulty == "medium":
+      return 2
+    elif difficulty == "hard":
+      return 3
+    else:
+      # If the difficulty is not easy, medium or hard, return 1
+      return 1
+
+  def load_json(self, file_name):
+    # Load a JSON file and return the data
+    with open(file_name, mode='r') as file:
+      data = json.load(file)
+    return data
+  
+  def save_json(self, data, file_name):
+    # Save data to a JSON file
+    with open(file_name, mode='w') as file:
+      json.dump(data, file)
+
+  # deprecated
   def load_csv(self, file_name):
     # Read the CSV file and load it back as a list of dictionaries
     with open(file_name, mode='r', encoding='utf-8') as file:
@@ -30,35 +88,44 @@ class DataPreprocessing:
     if not user_data:
       raise ValueError(f"No data found for userId {user_id}")
     
+    assessments_info = self.load_json("data/assessment_info.json")
     # Parse assessments and questions
     assessments = []
+    
+
     for record in user_data:
-      assessment = Assessment(
+      # Get the assessment to get corresponding unit ID, type and assessmentID.
+      assessment = assessments_info.get(record["assessmentId"])
+      # if cannot find the assessment, skip this record
+      if not assessment:
+        continue
+      # Get the unit ID of the syllabus
+      assessment_question = Assessment(
         start_time=record["createdAt"],
         duration=record.get("totalTimeSpent"),
         score=record.get("score"),
-        question=record.get("assessmentQuestionId")
+        question_id=record.get("assessmentQuestionId"),
+        assessment_id=record.get("assessmentId"),
+        assessment_type=assessment.get("type"),
+        unit=assessment.get("syllabi")
       )
-      assessments.append(assessment)
+      assessments.append(assessment_question)
 
     # Create User object
     user = User(
       user_id=user_id,
-      assessments=assessments,
-      questionIds=self.questionIds
+      assessments=assessments
     )
     return user
 
   def get_user_data_from_database(self):
     users = []  # declare users to be list of User type
     for user_id in tqdm.tqdm(self.userIds):
-      user = self.load_user_data(int(user_id[0]))
+      user = self.load_user_data(user_id)
       users.append(user)
     return users
     
-    # average_scores = [sum(user.get_score_vector()) / len(user.get_score_vector()) for user in users]
-    # total_time_spent = [sum(user.get_duration_vector()) for user in users]
-    # start_times = [user.get_start_time() for user in users]
+    
 
     # # save the result to a csv file
     # csv_file_path = "total_time_spent.csv"
@@ -67,99 +134,35 @@ class DataPreprocessing:
     #   writer.writerows(map(lambda x: [x], total_time_spent))
 
   def get_data_from_database(self):
+
+    # # save the result to a file that can be loaded in the future
+    # # the user is not JSON serializable, so we need to convert it to a dictionary
     users = self.get_user_data_from_database()
-    total_score = self.load_csv("total_score.csv")
-    total_time_spent = self.load_csv("total_time_spent.csv")
-    start_times = self.load_csv("start_times.csv")
-    # start_times = [datetime.strptime(time[0], "%Y-%m-%d %H:%M:%S") for time in start_times]
-    start_times = [eval(time[0]) for time in start_times]
-    assessment_ids = [user.get_assessment_ids() for user in users]
+    users_dict = [user.__dict__ for user in users]
+    self.save_json(users_dict, "data/users.json")  
 
-    # convert the start time to a list of datetime objects
-    start_time_list = []
-    for i, time in enumerate(start_times):
-      start_time_list.append([datetime.fromtimestamp(t) for t in time])
-
-    # count the number of submission of each week, the result is saved as [[week number 1, week number 2, ...], [week number 1, week number 2, ...], ...]
-    week_numbers_ = [[time.isocalendar()[1] for time in times] for times in start_time_list]
-
-    # count the number of submission of each week, the result is saved as [(user 1)[(week number 1, number of submissions in this week), (week number 1, number of submissions in this week)...], (user 2)[...]]
-    submission_counts = []
-    for i in range(len(start_times)):
-      user_submissions = []
-      for week_number in set(week_numbers_[i]):
-        count = week_numbers_[i].count(week_number)
-        user_submissions.append((week_number, count))
-      submission_counts.append(user_submissions)
-
-    # get the average number of submission of each user, the time span is 1 week
-    user_intensitys = []
-    for i in range(len(submission_counts)):
-      user = submission_counts[i]
-      counts = 0
-      for submission in user:
-        counts += submission[1]
-      user_intensitys.append(counts/len(submission_counts[i]))
-    print(user_intensitys)
-
-    # get the regularity of each user, which is the number of weeks that the user has submission
-    user_regularitys = []
-    for i in range(len(submission_counts)):
-      user_regularitys.append(len(submission_counts[i]))
-    print(user_regularitys)
-
-    user_data = {}
-    for i in range(len(self.userIds)):
-      user_id = int(self.userIds[i][0])
-      start_time = start_times[i]
-      intensity = user_intensitys[i]
-      regularity = user_regularitys[i]
-      score = float(total_score[i][0])
-      time_spent = float(total_time_spent[i][0])
-      assessment_id = assessment_ids[i]
-      
-      user_data[user_id] = {
-        'assessment_id': assessment_id,
-        'start_time': start_time,
-        'intensity': intensity,
-        'regularity': regularity,
-        'score': score,
-        'time_spent': time_spent
-      }
-    # Save data_dict to a JSON file
-    json_file_path = "user_data.json"
-    with open(json_file_path, mode='w') as file:
-      json.dump(user_data, file)
-
-    # Reload data_dict from the JSON file
+  def label_data(self):
+    json_file_path = "data/user_data.json"
     with open(json_file_path, mode='r') as file:
-      reloaded_data_dict = json.load(file)
-
-    print(reloaded_data_dict)
+      user_data = json.load(file)
+    # each sublist is a user's average score, intensity, regularity, and total time spent
+    user_data = self.clean_data(user_data)
+    user_cluster_vector = []
+    for key, data in user_data.items():
+      total_time_spent = int(data['time_spent']/10000)
+      user_cluster_vector.append([int(data['score']), int(data['intensity']), int(data['regularity']), total_time_spent])
+    means, stds, labels = group_students(user_cluster_vector, 3)
+    
+    # Add label field to user_data
+    for i, (key, data) in enumerate(user_data.items()):
+      data['label'] = float(labels[i])
+    
+    # Save clustered user data to a new JSON file
+    clustered_json_file_path = "clustered_user_data.json"
+    with open(clustered_json_file_path, mode='w') as file:
+      json.dump(user_data, file)
     print(user_data)
-  
-  # def label_data(self):
-  #   json_file_path = "user_data.json"
-  #   with open(json_file_path, mode='r') as file:
-  #     user_data = json.load(file)
-  #   # each sublist is a user's average score, intensity, regularity, and total time spent
-  #   user_data = self.clean_data(user_data)
-  #   user_cluster_vector = []
-  #   for key, data in user_data.items():
-  #     total_time_spent = int(data['time_spent']/10000)
-  #     user_cluster_vector.append([int(data['score']), int(data['intensity']), int(data['regularity']), total_time_spent])
-  #   means, stds, labels = group_students(user_cluster_vector, 3)
-    
-  #   # Add label field to user_data
-  #   for i, (key, data) in enumerate(user_data.items()):
-  #     data['label'] = float(labels[i])
-    
-  #   # Save clustered user data to a new JSON file
-  #   clustered_json_file_path = "clustered_user_data.json"
-  #   with open(clustered_json_file_path, mode='w') as file:
-  #     json.dump(user_data, file)
-  #   print(user_data)
-  #   return user_cluster_vector
+    return user_cluster_vector
   
   def get_data(self):
     json_file_path = "clustered_user_data.json"
@@ -167,7 +170,7 @@ class DataPreprocessing:
       user_data = json.load(file)
     cluster_user_0 = []
     for key, data in user_data.items():
-      if data['label'] == 0:
+      if data['label'] == 1:
         cluster_user_0.append(self.get_matrix(data['assessment_id']))
     return cluster_user_0
 
@@ -188,4 +191,11 @@ class DataPreprocessing:
     
 if __name__ == "__main__":
   dataPreprocessing = DataPreprocessing()
-  dataPreprocessing.get_data()
+  dataPreprocessing.performance_analysis()
+  # assessments_table = dataPreprocessing.db["assessments"]
+  # result = assessments_table.find_one({'id': "21c6b9e9-8f78-4700-b08e-03ebf645caf2"})
+  # syllabi = result.get("syllabi")
+  # units = [syllabus.get("unitId") for syllabus in syllabi]
+  # print(units)
+
+  
