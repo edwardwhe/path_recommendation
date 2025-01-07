@@ -4,6 +4,7 @@ from sklearn.cluster import DBSCAN
 import numpy as np
 import seaborn as sns
 import pandas as pd
+from datetime import datetime
 
 class DataAnalysis:
     def performance_analysis(self):
@@ -64,26 +65,37 @@ class DataAnalysis:
     def behavior_analysis(self):
       # load user data
       users = util.load_json(util, "data/users.json")
-      total_time_spent = []
-      for user in users:
-        if not user["assessments"]:
-          continue
-        current_total_time_spent = 0
-        for assessment in user["assessments"]:
-          current_total_time_spent += assessment["duration"]
-        total_time_spent.append({"user_id": user['user_id'], "total_time_spent": current_total_time_spent})
-      util.save_json(util, total_time_spent, "data/total_time_spent.json")
-      
-      start_times = []
+  
+      # calculate total time spent, intensity and regularity of each user
+      user_daily_performance = []
       for user in users:
         if not user["assessments"]:
           continue
         current_start_times = []
+        current_total_time_spent = 0
         for assessment in user["assessments"]:
           current_start_times.append(assessment["start_time"])
-        start_times.append({"user_id": user['user_id'], "start_times": current_start_times})
-      util.save_json(util, start_times, "data/start_times.json")
-
+          current_total_time_spent += assessment["duration"]
+          
+        current_start_times = [datetime.fromtimestamp(time) for time in current_start_times]
+        week_numbers = [time.isocalendar()[1] for time in current_start_times]
+        week_counts = {}
+        for week in week_numbers:
+          if week not in week_counts:
+            week_counts[week] = 0
+          week_counts[week] += 1
+        intensity = sum(week_counts.values()) / len(week_counts)
+        regularity = len(week_counts)
+        user_daily_performance.append({"user_id": user['user_id'], "intensity": intensity, "regularity": regularity, "total_time_spent": current_total_time_spent})
+      util.save_json(util, user_daily_performance, "data/user_daily_performance.json")
+      # use DBSCAN to cluster the three features of each user and get the labels
+      # save the cluster result and check the meaning of each clusters
+      # use Sankey diagram to visualize the flow between different clusters by grade and performance.
+    
+      # go back and check the result based on specific unit and exam or exercise typef
+      
+      
+      
       # start_times = [datetime.strptime(time[0], "%Y-%m-%d %H:%M:%S") for time in start_times]
       # assessment_ids = [user.get_assessment_ids() for user in users]
 
@@ -197,7 +209,6 @@ class DataAnalysis:
       plt.xlabel("Time Spent")
       plt.ylabel("Score")
       plt.title("Score vs Time Spent Lower Quantile")
-
       plt.tight_layout()
       plt.show()
       
