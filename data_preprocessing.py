@@ -142,7 +142,7 @@ class DataPreprocessing:
     self.save_json(users_dict, "data/users.json")  
 
   def label_data(self):
-    json_file_path = "data/user_data.json"
+    json_file_path = "data/users.json"
     with open(json_file_path, mode='r') as file:
       user_data = json.load(file)
     # each sublist is a user's average score, intensity, regularity, and total time spent
