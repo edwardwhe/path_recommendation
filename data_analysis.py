@@ -10,7 +10,14 @@ from matplotlib.sankey import Sankey
 import plotly.graph_objects as go
 from sklearn.cluster import KMeans
 
+# 包括所有的Analysis Tasks
+# 学生的成绩分布情况
+# 学生的行为分析
+# Markov可以接受的数据格式的转换
 class DataAnalysis:
+
+    # Deprecated
+    # 学生的成绩的分析
     def performance_analysis(self):
       # load user data
       users = util.load_json(util, "data/users.json")
@@ -26,6 +33,7 @@ class DataAnalysis:
           if assessment.get("assessment_type") == 5 or assessment.get("assessment_type") == 7: 
             continue
           difficulty = assessment_question_info[assessment["question"]]["difficulty"]
+          # 1, 1.2 1.4
           weighted_total_score += assessment["score"] * (1 + (difficulty - 1) * 0.2)
         average_score = weighted_total_score / total_num
         user["weighted_average_score"] = average_score
@@ -33,6 +41,7 @@ class DataAnalysis:
       print(np.mean([user["score"] for user in user_scores]))
       util.save_json(util, user_scores, "data/user_scores.json")
     
+    # Deprecated
     # A: 90, B: 80, C: 70, D: 60, F: the score is less than 60
     # write a function to classify the students into three categories: A, B, C, D, F
     # based on the weighted average score 
@@ -56,20 +65,17 @@ class DataAnalysis:
         user_cluster.append({"user_id": user['user_id'], "classification": user['classification']})
       util.save_json(util, user_cluster, "data/user_cluster.json")
     
-    def plot_student_classification(self):
-      user_cluster = util.load_json(util, "data/user_cluster.json")
-      user_cluster.sort(key=lambda x: x["classification"])
-      classification = [user["classification"] for user in user_cluster]
-      plt.hist(classification, bins=5)
-      plt.xlabel("Classification")
-      plt.ylabel("Number of Students")
-      plt.title("Student Classification")
-      plt.show()
-
+    ############################################################  
+    # 学生的行为分析
+    # 行为分析的指标：
+    # 把总时长拆分成两个指标：强度和规律性
+    # Intensity强度：每周平均做题的次数
+    # Regularity规律性：一共做题的周数
     def behavior_analysis(self):
       # load user data
       users = util.load_json(util, "data/users.json")
   
+      # 计算每个用户的强度和规律性
       # calculate total time spent, intensity and regularity of each user
       user_daily_performance = []
       for user in users:
@@ -78,14 +84,17 @@ class DataAnalysis:
         current_start_times = []
         current_total_time_spent = 0
         for assessment in user["assessments"]:
+          # 排除考试题目
           if assessment.get("assessment_type") == 5 or assessment.get("assessment_type") == 7: 
             continue
+          # 所有做题时间小于2s或者大于93s的数据都是异常数据，需要排除
           if assessment.get("duration") < 2000 or assessment.get("duration") > 93500:
             continue
           current_start_times.append(assessment["start_time"])
           current_total_time_spent += assessment["duration"]
         if not current_start_times:
           continue
+        # 提取每周的做题次数
         current_start_times = [datetime.fromtimestamp(time) for time in current_start_times]
         week_numbers = [time.isocalendar()[1] for time in current_start_times]
         week_counts = {}
@@ -96,7 +105,6 @@ class DataAnalysis:
         intensity = sum(week_counts.values()) / len(week_counts)
         regularity = len(week_counts)
         user_daily_performance.append({"user_id": user['user_id'], "intensity": intensity, "regularity": regularity, "total_time_spent": current_total_time_spent})
-      util.save_json(util, user_daily_performance, "data/user_daily_performance.json")
       # Normalize each column data of each user other than user_id
       if user_daily_performance:
           df = pd.DataFrame(user_daily_performance)
@@ -106,27 +114,19 @@ class DataAnalysis:
             mad = df[column].mad()
             normalized_df[column] = (df[column] - median) / mad
           user_daily_performance = normalized_df.to_dict(orient='records')
-      util.save_json(util, df.to_dict(orient='records'), "data/user_daily_performance.json")
-      # use DBSCAN to cluster the three features of each user and get the labels
-      # user_daily_performance_df = pd.DataFrame(user_daily_performance)
-      # dbscan = DBSCAN(eps=0.06, min_samples=5)
-      # user_daily_performance_df['cluster'] = dbscan.fit_predict(user_daily_performance_df[['intensity', 'regularity', 'total_time_spent']])
-      # clusters = user_daily_performance_df['cluster'].unique()
-      # print("Clusters found:", clusters)
-      # print(user_daily_performance_df)
-      # Calculate the Pearson correlation coefficient between intensity and regularity
+          
+      # Test强度和规律性的相关性
       intensity = df['intensity']
       regularity = df['regularity']
       correlation, p_value = pearsonr(intensity, regularity)
-
       print(f"Pearson correlation coefficient: {correlation}")
       print(f"P-value: {p_value}")
-
       if p_value < 0.05:
           print("The correlation between intensity and regularity is statistically significant.")
       else:
           print("The correlation between intensity and regularity is not statistically significant.")
-      # Visualize the DBSCAN result
+
+      # 基础的关于强度和规律性的统计信息
       intensity_quantiles = df['intensity'].quantile([0.05, 0.5, 0.95])
       regularity_quantiles = df['regularity'].quantile([0.05, 0.5, 0.95])
       total_time_spent_quantiles = df['total_time_spent'].quantile([0.05, 0.5, 0.95])
@@ -136,6 +136,8 @@ class DataAnalysis:
       print("Mean Intensity:", df['intensity'].mean())
       print("Mean Regularity:", df['regularity'].mean())
       print("Mean Total Time Spent:", df['total_time_spent'].mean())
+      
+      # 对user的行为进行分类
       # Define the thresholds for splitting the clusters
       regularity_threshold = 2
       intensity_threshold = 23
@@ -159,14 +161,21 @@ class DataAnalysis:
       # Extract the cluster information into (user, cluster) pair
       behavior_clusters = pd.DataFrame(df, columns=['user_id', 'cluster'])
       
+      # 对学生的成绩进行分类
+      ## ToDo：
+      # 这里不应该使用全部的成绩，而是应该用考试的成绩来做分类
       level = self.get_user_level_sequence(self.get_valid_user_sequence())
-      # Assign level clusters based on the given criteria
+      ## ToDo：
+      # 对level做一个normalization （把成绩从0-200变成0-100）
+      # 之后在在0-100这个区间根据90，80，70，60来划分出A，B，C，D，F的等级
       level['cluster_y'] = 0
       level.loc[level['level'] > 150, 'cluster_y'] = 1
       level.loc[(level['level'] > 100) & (level['level'] <= 150), 'cluster_y'] = 2
       level.loc[(level['level'] > 50) & (level['level'] <= 100), 'cluster_y'] = 3
       level.loc[level['level'] <= 50, 'cluster_y'] = 4
 
+      ## ToDo：
+      # 根据新分好的成绩和行为的cluster来做一个sankey diagram表示出它们之间的关系
       # Extract the level cluster information into (user, cluster_y) pair
       level_cluster = level[['user_id', 'cluster_y']]
       # Count the number of each cluster
@@ -176,8 +185,6 @@ class DataAnalysis:
           print(f"Cluster {cluster}: {count} users")
       print(level_cluster)
       
-      # Draw the Sankey diagram for behavior cluster and level cluster
-
       # Merge the behavior clusters and level clusters
       merged_clusters = pd.merge(behavior_clusters, level_cluster, on='user_id')
 
@@ -221,12 +228,19 @@ class DataAnalysis:
 
       fig.update_layout(title_text="Sankey Diagram for Behavior Cluster and Level Cluster", font_size=10)
       fig.show()
-    
 
-    
-    
-      # go back and check the result based on specific unit and exam or exercise typef
+      ## ToDo:
+      # 把shengrui总结的那个word文档里的visualization都在这里计算掉
+      # 1. intensity和regularity分布（cluster encode到color），cluster用的是行为的还是成绩的可以确认一下
+      # 2. matrix图，行为的cluster和成绩的cluster的关系
+      # 3. 不同的成绩里，四种behavior的分布柱状图
+      # 4. 不同的behavior里，四种成绩的分布柱状图
       
+    ######################################################################
+    ######################################################################
+    ############################# Overhead ###############################
+    ######################################################################
+    ######################################################################
       
     def get_time_score(self):
       user = util.load_json(util, "data/users.json")
@@ -403,6 +417,13 @@ class DataAnalysis:
       print(sequence["level"].quantile(0.25), sequence["level"].quantile(0.75))
       print(sequence["level"].min(), sequence["level"].max())
       print(len(sequence))
+    
+    
+    ######################################################################
+    ######################################################################
+    ########################### Markov Training ##########################
+    ######################################################################
+    ######################################################################
     
     # Convert question sequence to list of matrix that could be used as input to train Markov model directly.
     def convert_question_sequence_to_matrix(self, users, question_ids):

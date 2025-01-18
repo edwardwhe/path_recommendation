@@ -11,6 +11,7 @@ from path_recommendation import group_students
 class DataPreprocessing:
   
   def __init__(self):
+    # 数据库连接
     self.client = MongoClient("mongodb://root:hf6Wbg3dm8@dds-3ns35de5eee23e941756-pub.mongodb.rds.aliyuncs.com:3717,dds-3ns35de5eee23e942366-pub.mongodb.rds.aliyuncs.com:3717/admin?replicaSet=mgset-33008719")
     self.db = self.client['pro_mathaday_assessment']
     self.question_records = self.db['assessment_question_records']
