@@ -141,24 +141,14 @@ class DataAnalysis:
       # Define the thresholds for splitting the clusters
       regularity_threshold = 2
       intensity_threshold = 23
-
       # Create a new column 'cluster' based on the thresholds
       df['cluster'] = 0
       df.loc[(df['regularity'] > regularity_threshold) & (df['intensity'] > intensity_threshold), 'cluster'] = 1
       df.loc[(df['regularity'] > regularity_threshold) & (df['intensity'] <= intensity_threshold), 'cluster'] = 2
       df.loc[(df['regularity'] <= regularity_threshold) & (df['intensity'] > intensity_threshold), 'cluster'] = 3
       df.loc[(df['regularity'] <= regularity_threshold) & (df['intensity'] <= intensity_threshold), 'cluster'] = 4
-
-      # Print the unique clusters found
-      clusters = df['cluster'].unique()
-      print("Clusters found:", clusters)
-      print(df)
-      # Print the number of students in each cluster
-      cluster_counts = df['cluster'].value_counts()
-      print("Number of students in each cluster:")
-      for cluster, count in cluster_counts.items():
-          print(f"Cluster {cluster}: {count} students")
-      # Extract the cluster information into (user, cluster) pair
+      
+      # 将根据intensity和regularity的得到的分类和根据score的获得的分类拿来做成一个Sankey Diagram
       behavior_clusters = pd.DataFrame(df, columns=['user_id', 'cluster'])
       
       # 对学生的成绩进行分类
@@ -173,6 +163,7 @@ class DataAnalysis:
       level.loc[(level['level'] > 100) & (level['level'] <= 150), 'cluster_y'] = 2
       level.loc[(level['level'] > 50) & (level['level'] <= 100), 'cluster_y'] = 3
       level.loc[level['level'] <= 50, 'cluster_y'] = 4
+      level_clusters = level[['user_id', 'cluster_y']]
 
       ## ToDo：
       # 根据新分好的成绩和行为的cluster来做一个sankey diagram表示出它们之间的关系
@@ -186,20 +177,11 @@ class DataAnalysis:
       print(level_cluster)
       
       # Merge the behavior clusters and level clusters
-      merged_clusters = pd.merge(behavior_clusters, level_cluster, on='user_id')
+      merged_clusters = pd.merge(behavior_clusters, level_clusters, on='user_id')
 
       # Count the transitions between behavior clusters and level clusters
       transition_counts = merged_clusters.groupby(['cluster', 'cluster_y']).size().reset_index(name='count')
 
-      # Create the Sankey diagram
-      sankey = Sankey(unit=None)
-      for _, row in transition_counts.iterrows():
-          sankey.add(flows=[row['count'], -row['count']],
-             labels=[f"Behavior Cluster {row['cluster']}", f"Level Cluster {row['cluster_y']}"],
-             orientations=[0, 0])
-      sankey.finish()
-      plt.title("Sankey Diagram for Behavior Cluster and Level Cluster")
-      plt.show()
       # Define the labels for the Sankey diagram
       labels = [f"Behavior Cluster {i}" for i in range(1, 5)] + [f"Level Cluster {i}" for i in range(1, 5)]
 
@@ -311,6 +293,7 @@ class DataAnalysis:
       plt.title("Distribution for Time Spent")
       plt.show()
     
+    # 获取筛选过的用户数据
     def get_valid_user_sequence(self):
       users = util.load_json(util, "data/users.json")
       valid_users = []
@@ -327,17 +310,15 @@ class DataAnalysis:
           valid_users.append(user)
       return valid_users
     
+    # 获取用户考试题目的sequence（根据时间排序）
+    # 数据是筛选过，可以直接使用
     def get_valid_user_exam_sequence(self):
-      users = util.load_json(util, "data/users.json")
+      users = self.get_valid_user_sequence()
       valid_users = []
       for user in users:
-        if not user.get("assessments"):
-          continue
         valid_assessments = []
         for assessment in user["assessments"]:
-          if assessment.get("duration") < 2000 or assessment.get("duration") > 93500:
-            continue
-          elif assessment.get("assessment_type") == 1 or assessment.get("assessment_type") == 8 or assessment.get("assessment_type") == 9:
+          if assessment.get("assessment_type") == 1 or assessment.get("assessment_type") == 8 or assessment.get("assessment_type") == 9:
             continue
           valid_assessments.append(assessment)
         if valid_assessments:
@@ -345,17 +326,15 @@ class DataAnalysis:
           valid_users.append(user)
       return valid_users
     
+    # 获取用户练习题目的数据sequence（根据时间排序）
+    # 数据是筛选过，可以直接使用
     def get_valid_user_exercise_sequence(self):
-      users = util.load_json(util, "data/users.json")
+      users = self.get_valid_user_sequence()
       valid_users = []
       for user in users:
-        if not user.get("assessments"):
-          continue
         valid_assessments = []
         for assessment in user["assessments"]:
-          if assessment.get("duration") < 2000 or assessment.get("duration") > 93500:
-            continue
-          elif assessment.get("assessment_type") == 5 or assessment.get("assessment_type") == 7:
+          if assessment.get("assessment_type") == 5 or assessment.get("assessment_type") == 7:
             continue
           valid_assessments.append(assessment)
         if valid_assessments:
@@ -363,9 +342,11 @@ class DataAnalysis:
           valid_users.append(user)
       return valid_users
     
+    # 把用户的scores加入难度系数，求和后取均值转化参数level，用来衡量一个学生的成绩
     def get_user_level_sequence(self, users):
       sequence = []
       question_info = util.load_json(util, "data/assessment_question_info.json")
+      # 简单题记1分，中等题记1.2分，难题记2分。
       difficulty_mapping = {1: 1, 2: 1.2, 3: 2}
       for user in users:
         # sum the score of each assessment
