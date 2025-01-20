@@ -114,47 +114,41 @@ class DataAnalysis:
             mad = df[column].mad()
             normalized_df[column] = (df[column] - median) / mad
           user_daily_performance = normalized_df.to_dict(orient='records')
-          
-      # Test强度和规律性的相关性
-      intensity = df['intensity']
-      regularity = df['regularity']
-      correlation, p_value = pearsonr(intensity, regularity)
-      print(f"Pearson correlation coefficient: {correlation}")
-      print(f"P-value: {p_value}")
-      if p_value < 0.05:
-          print("The correlation between intensity and regularity is statistically significant.")
-      else:
-          print("The correlation between intensity and regularity is not statistically significant.")
-
-      # 基础的关于强度和规律性的统计信息
-      intensity_quantiles = df['intensity'].quantile([0.05, 0.5, 0.95])
-      regularity_quantiles = df['regularity'].quantile([0.05, 0.5, 0.95])
-      total_time_spent_quantiles = df['total_time_spent'].quantile([0.05, 0.5, 0.95])
-      print("Intensity Quantiles:", intensity_quantiles)
-      print("Regularity Quantiles:", regularity_quantiles)
-      print("Total Time Spent Quantiles:", total_time_spent_quantiles)
-      print("Mean Intensity:", df['intensity'].mean())
-      print("Mean Regularity:", df['regularity'].mean())
-      print("Mean Total Time Spent:", df['total_time_spent'].mean())
       
-      # 对user的行为进行分类
-      # Define the thresholds for splitting the clusters
-      regularity_threshold = 2
-      intensity_threshold = 23
-      # Create a new column 'cluster' based on the thresholds
-      df['cluster'] = 0
-      df.loc[(df['regularity'] > regularity_threshold) & (df['intensity'] > intensity_threshold), 'cluster'] = 1
-      df.loc[(df['regularity'] > regularity_threshold) & (df['intensity'] <= intensity_threshold), 'cluster'] = 2
-      df.loc[(df['regularity'] <= regularity_threshold) & (df['intensity'] > intensity_threshold), 'cluster'] = 3
-      df.loc[(df['regularity'] <= regularity_threshold) & (df['intensity'] <= intensity_threshold), 'cluster'] = 4
+      level = self.get_user_level_sequence(self.get_valid_user_exercise_sequence())
+      df = pd.merge(df, level, on='user_id')
+      
+      # Run KMeans clustering to get 4 equal size clusters
+      kmeans = KMeans(n_clusters=8, random_state=0)
+      clusters = kmeans.fit_predict(df[['intensity', 'regularity', 'level']])
+      df['cluster'] = clusters
+
+      # # Ensure clusters are of equal size
+      # cluster_sizes = df['cluster'].value_counts()
+      # min_cluster_size = cluster_sizes.min()
+      # equal_size_clusters = pd.concat([df[df['cluster'] == i].sample(min_cluster_size, random_state=0) for i in range(4)])
+      # df = equal_size_clusters
+      
+      # Plot the clusters
+      plt.figure(figsize=(10, 6))
+      sns.scatterplot(x='intensity', y='regularity', hue='cluster', data=df, palette='viridis')
+      plt.title('User Clusters based on Intensity and Regularity')
+      plt.xlabel('Intensity')
+      plt.ylabel('Regularity')
+      plt.legend(title='Cluster')
+      plt.show()
+      
       
       # 将根据intensity和regularity的得到的分类和根据score的获得的分类拿来做成一个Sankey Diagram
       behavior_clusters = pd.DataFrame(df, columns=['user_id', 'cluster'])
-      
+      # Print the number of different behavior clusters
+      cluster_counts = df['cluster'].value_counts()
+      print("Number of different behavior clusters:")
+      print(cluster_counts)
       # 对学生的成绩进行分类
       ## ToDo：
       # 这里不应该使用全部的成绩，而是应该用考试的成绩来做分类
-      level = self.get_user_level_sequence(self.get_valid_user_sequence())
+      level = self.get_user_level_sequence(self.get_valid_user_exam_sequence())
       ## ToDo：
       # 对level做一个normalization （把成绩从0-200变成0-100）
       # 之后在在0-100这个区间根据90，80，70，60来划分出A，B，C，D，F的等级
@@ -169,12 +163,6 @@ class DataAnalysis:
       # 根据新分好的成绩和行为的cluster来做一个sankey diagram表示出它们之间的关系
       # Extract the level cluster information into (user, cluster_y) pair
       level_cluster = level[['user_id', 'cluster_y']]
-      # Count the number of each cluster
-      cluster_counts = level_cluster['cluster_y'].value_counts()
-      print("Number of users in each level cluster:")
-      for cluster, count in cluster_counts.items():
-          print(f"Cluster {cluster}: {count} users")
-      print(level_cluster)
       
       # Merge the behavior clusters and level clusters
       merged_clusters = pd.merge(behavior_clusters, level_clusters, on='user_id')
@@ -183,15 +171,15 @@ class DataAnalysis:
       transition_counts = merged_clusters.groupby(['cluster', 'cluster_y']).size().reset_index(name='count')
 
       # Define the labels for the Sankey diagram
-      labels = [f"Behavior Cluster {i}" for i in range(1, 5)] + [f"Level Cluster {i}" for i in range(1, 5)]
+      labels = [f"Behavior Cluster {i}" for i in range(8)] + [f"Level Cluster {i}" for i in range(1, 5)]
 
       # Define the source and target indices for the Sankey diagram
       source = []
       target = []
       value = []
       for _, row in transition_counts.iterrows():
-        source.append(row['cluster'] - 1)
-        target.append(row['cluster_y'] + 3)
+        source.append(row['cluster'])
+        target.append(row['cluster_y'] + 7)
         value.append(row['count'])
 
       # Create the Sankey diagram
@@ -484,4 +472,4 @@ class DataAnalysis:
 
 if __name__ == "__main__":
     data_analysis = DataAnalysis()
-    data_analysis.training_set()
+    data_analysis.behavior_analysis()
