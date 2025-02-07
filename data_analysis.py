@@ -435,7 +435,7 @@ class DataAnalysis:
     
     def training_set(self):
       # only deal with the recommendation for unit 3
-      assessment_questions_3 = util.load_json(util, "data/assessment_questions/12.json")
+      assessment_questions_3 = util.load_json(util, "data/assessment_questions/3.json")
       users = self.get_valid_user_exercise_sequence()
       # filter only assessment questions that could be found in assessment_questions_3
       valid_users = []
@@ -444,8 +444,8 @@ class DataAnalysis:
         for assessment in user["assessments"]:
           if not assessment:
             continue
-          elif assessment["assessment_id"] not in assessment_questions_3:
-            print(assessment["assessment_id"], "not in assessment_questions_3")
+          elif assessment["question"] not in assessment_questions_3:
+            print(assessment["question"], "not in assessment_questions_3")
             continue
           current_assessments.append(assessment)
         if current_assessments:
@@ -455,21 +455,22 @@ class DataAnalysis:
       # Merge the valid users with their cluster information
       valid_users_df = pd.DataFrame(valid_users)
       print(valid_users_df)
-      # valid_users_clustered = pd.merge(valid_users_df, cluster[['user_id', 'cluster']], on='user_id')
+      valid_users_clustered = pd.merge(valid_users_df, cluster[['user_id', 'cluster']], on='user_id')
 
-      # # Split the users based on their clusters
-      # cluster_0_users = valid_users_clustered[valid_users_clustered['cluster'] == 0]
-      # cluster_1_users = valid_users_clustered[valid_users_clustered['cluster'] == 1]
-      # cluster_2_users = valid_users_clustered[valid_users_clustered['cluster'] == 2]
+      # Split the users based on their clusters
+      cluster_0_users = valid_users_clustered[valid_users_clustered['cluster'] == 0]
+      cluster_1_users = valid_users_clustered[valid_users_clustered['cluster'] == 1]
+      cluster_2_users = valid_users_clustered[valid_users_clustered['cluster'] == 2]
 
-      # # Convert the question sequences to matrices for each cluster
-      # question_ids = assessment_questions_3
-      # cluster_0_matrix = self.convert_question_sequence_to_matrix(cluster_0_users.to_dict('records'), question_ids)
-      # cluster_1_matrix = self.convert_question_sequence_to_matrix(cluster_1_users.to_dict('records'), question_ids)
-      # cluster_2_matrix = self.convert_question_sequence_to_matrix(cluster_2_users.to_dict('records'), question_ids)
+      # Convert the question sequences to matrices for each cluster
+      question_ids = assessment_questions_3
+      cluster_0_matrix = self.convert_question_sequence_to_matrix(cluster_0_users.to_dict('records'), question_ids)
+      cluster_1_matrix = self.convert_question_sequence_to_matrix(cluster_1_users.to_dict('records'), question_ids)
+      cluster_2_matrix = self.convert_question_sequence_to_matrix(cluster_2_users.to_dict('records'), question_ids)
+       
 
-      # return [cluster_0_matrix, cluster_1_matrix, cluster_2_matrix]
+      return [cluster_0_matrix, cluster_1_matrix, cluster_2_matrix]
 
 if __name__ == "__main__":
     data_analysis = DataAnalysis()
-    data_analysis.behavior_analysis()
+    data_analysis.training_set()

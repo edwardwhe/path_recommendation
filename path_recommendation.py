@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 # from data_preprocessing import DataPreprocessing
+from data_analysis import DataAnalysis
 
 def group_students(student_attributes_list, n_clusters = 3):
     # Function: group students into three clusters: regular learning, intensive learning and, advanced learning.
@@ -98,11 +99,11 @@ if __name__ == "__main__":
         [[1, 1, 1, 0], [1, 1, 1, 1]],
         [[0, 0, 1, 0], [0, 0, 1, 1]],
     ]
-    # dataPreprocessing = DataPreprocessing()
-    # student_states_list = dataPreprocessing.get_data()
-    # Train the Markov model
-    transition_matrix, states = train_markov_base(student_states_list)
+    dataAnalysis = DataAnalysis()
+    cluster_0_matrix, cluster_1_matrix, cluster_2_matrix = dataAnalysis.training_set()
 
+    transition_matrix, states = train_markov_base(cluster_0_matrix)
+    
     # Output the transition matrix and states
     print("States:", states)
     print("Transition Matrix:\n", transition_matrix)
