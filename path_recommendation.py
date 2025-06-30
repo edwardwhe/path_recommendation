@@ -94,15 +94,19 @@ def train_markov_advanced(student_states_list):
 
 
 if __name__ == "__main__":
-    student_states_list = [
-        [[0, 0, 1, 0], [0, 1, 1, 0], [1, 1, 1, 0]],
-        [[1, 1, 1, 0], [1, 1, 1, 1]],
-        [[0, 0, 1, 0], [0, 0, 1, 1]],
-    ]
+    # student_states_list = [
+    #     [[0, 0, 1, 0], [0, 1, 1, 0], [1, 1, 1, 0]],
+    #     [[1, 1, 1, 0], [1, 1, 1, 1]],
+    #     [[0, 0, 1, 0], [0, 0, 1, 1]],
+    # ]
     dataAnalysis = DataAnalysis()
     cluster_0_matrix, cluster_1_matrix, cluster_2_matrix = dataAnalysis.training_set()
 
     transition_matrix, states = train_markov_base(cluster_0_matrix)
+    
+    # Save transition matrix to file
+    np.save('transition_matrix.npy', transition_matrix)
+    np.save('states.npy', np.array(states, dtype=object))
     
     # Output the transition matrix and states
     print("States:", states)

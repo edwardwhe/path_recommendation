@@ -454,7 +454,7 @@ class DataAnalysis:
       cluster = self.kmeans_clustering()
       # Merge the valid users with their cluster information
       valid_users_df = pd.DataFrame(valid_users)
-      print(valid_users_df)
+      # print(valid_users_df)
       valid_users_clustered = pd.merge(valid_users_df, cluster[['user_id', 'cluster']], on='user_id')
 
       # Split the users based on their clusters
