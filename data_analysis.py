@@ -445,7 +445,7 @@ class DataAnalysis:
           if not assessment:
             continue
           elif assessment["question"] not in assessment_questions_3:
-            print(assessment["question"], "not in assessment_questions_3")
+            # print(assessment["question"], "not in assessment_questions_3")
             continue
           current_assessments.append(assessment)
         if current_assessments:

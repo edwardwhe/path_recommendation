@@ -45,6 +45,8 @@ def train_markov_base(student_states_list):
     # Input: [(student1)[[0, 0, 1, 0], [0, 1, 1, 0], [1, 1, 1, 0]], (student2)[[1, 1, 1, 0], [1, 1, 1, 1]]], where each sublist is a student, and subsublist is the one-hot encoding of students' questions
     # Note: we don't consider repeated questions
     
+    print(f"Training Markov model with {len(student_states_list)} students")
+    
     # Step 1: Define the unique states
     state_to_index = {}
     index_to_state = []
@@ -58,15 +60,17 @@ def train_markov_base(student_states_list):
                 index_to_state.append(state_tuple)
     
     num_states = len(index_to_state)
+    print(f"Total unique states found: {num_states}")
     
     # Step 2: Initialize the transition count matrix
     transition_counts = np.zeros((num_states, num_states))
     
     # Count transitions
-    for student_states in student_states_list:
-        for i in range(len(student_states) - 1):
-            current_state = tuple(student_states[i])
-            next_state = tuple(student_states[i + 1])
+    for i, student_states in enumerate(student_states_list):
+        print(f"Student {i+1}: {len(student_states)} states")
+        for j in range(len(student_states) - 1):
+            current_state = tuple(student_states[j])
+            next_state = tuple(student_states[j + 1])
             
             current_index = state_to_index[current_state]
             next_index = state_to_index[next_state]
@@ -109,5 +113,5 @@ if __name__ == "__main__":
     np.save('states.npy', np.array(states, dtype=object))
     
     # Output the transition matrix and states
-    print("States:", states)
-    print("Transition Matrix:\n", transition_matrix)
+    # print("States:", states)
+    # print("Transition Matrix:\n", transition_matrix)
