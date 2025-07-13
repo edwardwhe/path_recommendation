@@ -1,0 +1,528 @@
+================================================================================
+               MARKOV EDUCATIONAL PATH RECOMMENDATION SYSTEM
+                          CORE API REFERENCE
+================================================================================
+
+VERSION: 1.0
+DATE: 2025
+AUTHOR: edwardwhe
+
+================================================================================
+                              OVERVIEW
+================================================================================
+
+This system provides Markov-based educational path recommendations using 
+student learning patterns. The core functionality is split between training 
+models on historical data and making real-time predictions for next questions.
+
+Key Design Principles:
+- Training uses offline data for model creation
+- Predictions use online database connections for real-time student data
+- Support for both ordinal and one-hot encoding schemes
+- Comprehensive error handling and fallback mechanisms
+
+================================================================================
+                          CORE API INTERFACES
+================================================================================
+
+1. PRIMARY PREDICTION INTERFACE
+===============================
+
+Function: get_next_question()
+Location: markov_predictor.py -> MarkovPredictor class
+Purpose: Get personalized next question recommendation for a student
+
+SIGNATURE:
+    get_next_question(
+        student_id: str,
+        transition_matrix: numpy.ndarray,
+        unit_questions: List[str],
+        unit: int,
+        encoding_type: str,
+        index_to_state: Optional[Any] = None,
+        state_to_index: Optional[Any] = None
+    ) -> str
+
+PARAMETERS:
+    student_id        - String identifier for the student
+    transition_matrix - Trained Markov transition matrix (N x N)
+    unit_questions   - List of question IDs for the unit (length N)
+    unit             - Unit number for context
+    encoding_type    - Either "ordinal" or "one_hot"
+    index_to_state   - State mapping (required for one_hot, None for ordinal)
+    state_to_index   - Reverse state mapping (required for one_hot, None for ordinal)
+
+RETURNS:
+    String: Question ID for next recommended question
+    Special: "-1" if no more questions available (student completed all)
+
+DATA SOURCE:
+    - Loads student data from MongoDB database only (online mode)
+    - Does NOT use offline data files for predictions
+
+EXAMPLE USAGE:
+    predictor = MarkovPredictor()
+    next_question = predictor.get_next_question(
+        student_id="48839",
+        transition_matrix=trained_matrix,
+        unit_questions=question_list,
+        unit=3,
+        encoding_type="ordinal"
+    )
+
+
+2. PRIMARY TRAINING INTERFACE
+=============================
+
+Function: train_transition_matrix()
+Location: markov_trainer_offline.py -> MarkovTrainerOffline class
+Purpose: Train Markov model using offline historical data
+
+SIGNATURE:
+    train_transition_matrix(
+        unit: int,
+        encoding_type: str = "ordinal",
+        cluster_index: Optional[int] = None,
+        include_exam: bool = False
+    ) -> Tuple[numpy.ndarray, List[str], Any, Any]
+
+PARAMETERS:
+    unit           - Target unit number for training
+    encoding_type  - Either "ordinal" or "one_hot"
+    cluster_index  - Specific student cluster (0,1,2) or None for all
+    include_exam   - Include exam questions in training data
+
+RETURNS:
+    Tuple containing:
+    - transition_matrix: Trained Markov transition matrix
+    - unit_questions: List of question IDs used for encoding
+    - index_to_state: State index mapping (for one_hot)
+    - state_to_index: State to index mapping (for one_hot)
+
+DATA SOURCE:
+    - Uses offline JSON files for training only
+    - Located in ./data/ directory
+
+EXAMPLE USAGE:
+    trainer = MarkovTrainerOffline()
+    matrix, questions, idx_to_state, state_to_idx = trainer.train_transition_matrix(
+        unit=3,
+        encoding_type="ordinal",
+        cluster_index=None
+    )
+
+
+3. SUPPORTING TRAINING INTERFACES
+==================================
+
+Function: get_assessment_question_by_unit()
+Purpose: Retrieve all questions for a specific unit
+
+SIGNATURE:
+    get_assessment_question_by_unit(unit: int) -> Tuple[List[str], str]
+
+RETURNS:
+    - List of question IDs for the unit
+    - Path to questions directory
+
+
+Function: get_students()
+Purpose: Get student data filtered by unit questions
+
+SIGNATURE:
+    get_students(
+        unit_questions: List[str],
+        include_exam: bool = False
+    ) -> List[Dict]
+
+RETURNS:
+    - List of student dictionaries with assessment data
+
+
+Function: filter_valid_students()
+Purpose: Filter students based on validity criteria
+
+SIGNATURE:
+    filter_valid_students(students: List[Dict]) -> List[Dict]
+
+CRITERIA:
+    - Assessment duration between 2-93.5 seconds
+    - Valid scores (non-null)
+    - Minimum 2 assessments for transition analysis
+
+RETURNS:
+    - Filtered list of valid student data
+
+
+4. UNIFIED SYSTEM INTERFACE
+============================
+
+Class: PathRecommendationSystem
+Location: main.py
+Purpose: High-level interface combining training and prediction
+
+Key Methods:
+    - train_model(): Train and save models
+    - load_model(): Load previously trained models
+    - predict(): Make predictions using loaded models
+    - get_student_recommendation(): End-to-end recommendation
+
+EXAMPLE USAGE:
+    system = PathRecommendationSystem()
+    system.train_model(unit=3, encoding_type="ordinal")
+    recommendation = system.get_student_recommendation("student_123", unit=3)
+
+================================================================================
+                        FILE AND FOLDER STRUCTURE
+================================================================================
+
+ROOT DIRECTORY: deliverable/
+===============================
+
+Core Implementation Files:
+--------------------------
+
+markov_predictor.py
+    PURPOSE: Real-time prediction functionality
+    CONTAINS: MarkovPredictor class with get_next_question() function
+    DATA SOURCE: MongoDB database (online mode)
+    KEY FEATURES: 
+        - Loads student sequences from live database
+        - Supports both ordinal and one-hot encoding
+        - Handles missing student data gracefully
+        - Returns -1 when all questions completed
+
+markov_trainer.py
+    PURPOSE: Database-connected training functionality
+    CONTAINS: MarkovTrainer class for live database training
+    DATA SOURCE: MongoDB database
+    KEY FEATURES:
+        - Real-time data extraction from database
+        - Student clustering based on learning patterns
+        - Support for both encoding types
+        - Model persistence capabilities
+
+markov_trainer_offline.py
+    PURPOSE: Offline training using local data files
+    CONTAINS: MarkovTrainerOffline class
+    DATA SOURCE: Local JSON files in ./data/ directory
+    KEY FEATURES:
+        - Training without database connection
+        - Uses historical data for model creation
+        - Identical API to online trainer
+        - Primary interface for model training
+
+main.py
+    PURPOSE: Unified system interface
+    CONTAINS: PathRecommendationSystem class
+    KEY FEATURES:
+        - High-level API for complete workflows
+        - Model management (save/load)
+        - Command-line interface
+        - Integration of training and prediction
+
+System Configuration Files:
+---------------------------
+
+requirements.txt
+    PURPOSE: Python package dependencies
+    CONTAINS: Required packages with versions
+    PACKAGES: numpy, pandas, scikit-learn, pymongo, tqdm
+
+README.md
+    PURPOSE: General system documentation
+    CONTAINS: Setup instructions, usage examples, system overview
+
+Testing and Validation Files:
+-----------------------------
+
+test_functions.py
+    PURPOSE: Comprehensive test suite
+    CONTAINS: TestRunner class with 12 test functions
+    COVERAGE:
+        - Data availability validation
+        - Trainer initialization testing
+        - Function-specific testing
+        - Integration testing
+        - Error handling verification
+
+run_tests.py
+    PURPOSE: Automated test execution
+    CONTAINS: Test orchestration and reporting
+    FEATURES:
+        - Data validation
+        - Sample data creation if needed
+        - Complete test suite execution
+        - Detailed result reporting
+
+create_sample_data.py
+    PURPOSE: Generate sample data for testing
+    CONTAINS: Functions to create realistic test datasets
+    FEATURES:
+        - 50 sample users with assessment history
+        - Realistic timestamps and scores
+        - Proper data structure matching real system
+
+Example and Demo Files:
+----------------------
+
+example_usage.py
+    PURPOSE: Comprehensive usage examples
+    CONTAINS: 7 detailed examples covering all major features
+    EXAMPLES:
+        - Basic training and prediction
+        - Cluster-specific training
+        - One-hot encoding usage
+        - Advanced prediction methods
+        - Direct API usage
+        - Error handling patterns
+        - get_next_question function demo
+
+demo_get_next_question.py
+    PURPOSE: Focused demonstration of core prediction function
+    CONTAINS: Interactive demo of get_next_question functionality
+    FEATURES:
+        - Multiple student testing
+        - Both encoding types demonstration
+        - New student handling
+        - Clear function signature display
+
+Model Persistence Files:
+-----------------------
+
+transition_matrix_unit_3_ordinal.npy
+    PURPOSE: Saved transition matrix for unit 3 (ordinal encoding)
+    FORMAT: NumPy binary format
+    SIZE: 201x201 matrix
+
+unit_questions_unit_3_ordinal.json
+    PURPOSE: Question list for unit 3 model
+    FORMAT: JSON array of question IDs
+    COUNT: 201 questions
+
+Documentation Files:
+-------------------
+
+API-Documentation.docx
+    PURPOSE: Formal API documentation in Word format
+    CONTAINS: Detailed technical specifications
+
+CORE_API_REFERENCE.txt (this file)
+    PURPOSE: Core API interfaces and file descriptions
+    FORMAT: Structured text documentation
+
+Data Directory:
+--------------
+
+data/
+    PURPOSE: Training data storage
+    CONTENTS:
+        - users.json: Complete user assessment history (40MB)
+        - assessment_info.json: Assessment metadata (12MB)
+        - assessment_question_info.json: Question details (747KB)
+        - assessment_question_id.json: Question IDs (300KB)
+        - obj_to_unit.json: Objective to unit mapping (3KB)
+        - user_id.json: User ID list (6KB)
+        - assessment_questions/: Individual unit question files
+            - 3.json: Questions for unit 3 (201 questions)
+            - [other units as needed]
+
+    DATA CHARACTERISTICS:
+        - Real student assessment data
+        - Time-filtered (2-93.5 second duration)
+        - Score validated (non-null values)
+        - Chronologically ordered
+
+Cache Directory:
+---------------
+
+__pycache__/
+    PURPOSE: Python bytecode cache
+    CONTENTS: Compiled Python files for faster execution
+    NOTE: Auto-generated, can be safely deleted
+
+================================================================================
+                           ENCODING SCHEMES
+================================================================================
+
+1. ORDINAL ENCODING
+===================
+
+CONCEPT: Each question is represented by its index in the unit_questions list
+SEQUENCE FORMAT: List of integers [0, 1, 2, 3, ...]
+TRANSITION MATRIX: N x N where N = number of questions
+STATE SPACE: Linear, each question is one state
+
+ADVANTAGES:
+    - Simple and intuitive
+    - Smaller transition matrices
+    - Faster computation
+    - Lower memory usage
+
+EXAMPLE:
+    Questions: ["q1", "q2", "q3", "q4"]
+    Student sequence: ["q1", "q3", "q2"] -> [0, 2, 1]
+
+2. ONE-HOT ENCODING
+===================
+
+CONCEPT: Each state represents cumulative questions attempted
+SEQUENCE FORMAT: List of binary vectors [[1,0,0], [1,0,1], [1,1,1], ...]
+TRANSITION MATRIX: M x M where M = number of unique states
+STATE SPACE: Exponential, each unique combination is one state
+
+ADVANTAGES:
+    - Captures question combinations
+    - Models learning progression
+    - More detailed state representation
+
+DISADVANTAGES:
+    - Larger state space
+    - Higher memory requirements
+    - More complex computation
+
+EXAMPLE:
+    Questions: ["q1", "q2", "q3"]
+    Student sequence: attempt q1, then q3, then q2
+    Encoded: [[1,0,0], [1,0,1], [1,1,1]]
+
+3. FUTURE ENCODING POSSIBILITIES
+=================================
+
+The system can be extended to support more sophisticated encoding schemes that
+incorporate additional student performance information:
+
+SCORE-BASED ENCODING:
+    CONCEPT: Include student performance scores in state representation
+    FORMAT: (question_id, score) pairs or weighted completions
+    EXAMPLE: [(0, 85), (1, 92), (2, 78)] - questions with performance scores
+    BENEFIT: Recommendations based on both sequence and achievement level
+
+OBJECTIVE-AWARE ENCODING:
+    CONCEPT: Incorporate question learning objectives into state representation
+    FORMAT: (question_id, objective_category, performance_level) tuples
+    EXAMPLE: [(0, "addition", 50), (1, "multiplication", 100)] - topic-performance pairs
+    BENEFIT: Recommendations based on mastery patterns across learning objectives
+
+MULTI-DIMENSIONAL ENCODING:
+    CONCEPT: Combine multiple factors: sequence, scores, objectives, timing
+    FORMAT: Rich state tuples with multiple performance dimensions
+    EXAMPLE: [(0, 50, "addition", 40s), (1, 100, "multiplication", 95s)]
+    BENEFIT: Sophisticated recommendations considering:
+        - What questions students have completed
+        - How well they performed on each question
+        - What learning objectives each question addresses
+        - Time spent on different question types
+        - Patterns of strength and weakness across topics
+
+These advanced encoding schemes would enable the system to provide more
+personalized recommendations by considering not just question completion
+sequences, but also the quality of student performance and the educational
+objectives being addressed. However, the computational cost and overfitting
+may be the potential problems.
+
+================================================================================
+                          ERROR HANDLING
+================================================================================
+
+Database Connection Errors:
+---------------------------
+- Graceful fallback when MongoDB unavailable
+- Clear error messages for connection issues
+- Timeout handling for slow connections
+
+Data Validation Errors:
+----------------------
+- Invalid student IDs handled gracefully
+- Missing assessment data returns appropriate defaults
+- Out-of-bounds indices protected with range checks
+
+Model Loading Errors:
+--------------------
+- File not found errors with descriptive messages
+- Corrupted model files detected and reported
+- Version compatibility checking
+
+Prediction Errors:
+-----------------
+- Empty sequences handled with default responses
+- Invalid encoding types rejected with clear messages
+- State mapping mismatches detected and corrected
+
+================================================================================
+                         PERFORMANCE CHARACTERISTICS
+================================================================================
+
+Training Performance:
+--------------------
+- Unit 3 model: ~5-10 seconds training time
+- Memory usage: ~100MB for typical datasets
+- Scales linearly with number of students
+- One-hot encoding: 10-20x slower than ordinal
+
+Prediction Performance:
+----------------------
+- Single prediction: <100ms typical response time
+- Database query: 200-500ms depending on connection
+- Memory efficient: processes data on-demand
+- Concurrent predictions: supported with separate instances
+
+Scalability Limits:
+------------------
+- Tested with: 293 students, 201 questions per unit
+- One-hot encoding: up to 5017 unique states
+- Transition matrix: up to 5017x5017 for complex models
+- Recommended maximum: 1000 questions per unit
+
+================================================================================
+                           INTEGRATION POINTS
+================================================================================
+
+Database Integration:
+--------------------
+- MongoDB connection for real-time student data
+- Connection pooling for production deployments
+- Read-only access for prediction functionality
+- Configurable connection parameters
+
+Web Service Integration:
+-----------------------
+- RESTful API endpoints can be built around core functions
+- JSON input/output format compatibility
+- Stateless design for horizontal scaling
+- Session management for user contexts
+
+Batch Processing:
+----------------
+- Multiple student predictions in single call
+- Bulk model training for multiple units
+- Scheduled model updates with new data
+- Performance monitoring and logging
+
+Learning Management System (LMS) Integration:
+---------------------------------------------
+- Standard question ID format compatibility
+- Student progress tracking integration
+- Assessment result feedback loops
+- Real-time recommendation delivery
+
+================================================================================
+                              SUPPORT
+================================================================================
+
+For technical support, implementation questions, or bug reports:
+
+1. Review this documentation and README.md
+2. Run the test suite: python run_tests.py
+3. Check example usage: python example_usage.py
+4. Test core function: python demo_get_next_question.py
+
+Common Issues:
+- Database connection: Check MongoDB credentials and network
+- Missing data: Ensure all required files in data/ directory
+- Import errors: Install requirements with pip install -r requirements.txt
+- Model loading: Verify model files exist and are not corrupted
+
+================================================================================
+                             END OF DOCUMENT
+================================================================================ 

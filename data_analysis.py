@@ -395,7 +395,7 @@ class DataAnalysis:
     ######################################################################
     
     # Convert question sequence to list of matrix that could be used as input to train Markov model directly.
-    def convert_question_sequence_to_matrix(self, users, question_ids):
+    def encode_question_one_hot(self, users, question_ids):
       matrix_sequence = []
       for user in users:
         assessment_matrix = np.zeros((len(user["assessments"]), len(question_ids)))
@@ -407,6 +407,19 @@ class DataAnalysis:
         matrix_sequence.append(assessment_matrix)
       return matrix_sequence
       
+    # Convert question sequence to a list of problem indices (entry-based) for Markov model training.
+    # Each user's sequence will be a list of integers, where each integer is the index of the question attempted (relative to question_ids).
+    def encode_question_ordinal(self, users, question_ids):
+        entry_sequences = []
+        for user in users:
+            entry_sequence = []
+            for assessment in user["assessments"]:
+                if assessment["question"] in question_ids:
+                    question_index = question_ids.index(assessment["question"])
+                    entry_sequence.append(question_index)
+            if entry_sequence:
+                entry_sequences.append(entry_sequence)
+        return entry_sequences
     
     def kmeans_clustering(self):
       # user unit exercise data (not exam)
@@ -433,43 +446,48 @@ class DataAnalysis:
       # plt.show()
       return merged_sequence
     
-    def training_set(self):
-      # only deal with the recommendation for unit 3
-      assessment_questions_3 = util.load_json(util, "data/assessment_questions/3.json")
-      users = self.get_valid_user_exercise_sequence()
-      # filter only assessment questions that could be found in assessment_questions_3
-      valid_users = []
-      for user in users:
-        current_assessments = []
-        for assessment in user["assessments"]:
-          if not assessment:
-            continue
-          elif assessment["question"] not in assessment_questions_3:
-            # print(assessment["question"], "not in assessment_questions_3")
-            continue
-          current_assessments.append(assessment)
-        if current_assessments:
-          user["assessments"] = current_assessments
-          valid_users.append(user)
-      cluster = self.kmeans_clustering()
-      # Merge the valid users with their cluster information
-      valid_users_df = pd.DataFrame(valid_users)
-      # print(valid_users_df)
-      valid_users_clustered = pd.merge(valid_users_df, cluster[['user_id', 'cluster']], on='user_id')
+    # Training set generator for Markov model with flag to select encoding type
+    def training_set(self, encoding_type='one_hot'):
+        # only deal with the recommendation for unit 3
+        assessment_questions_3 = util.load_json(util, "data/assessment_questions/3.json")
+        users = self.get_valid_user_exercise_sequence()
+        # filter only assessment questions that could be found in assessment_questions_3
+        valid_users = []
+        for user in users:
+            current_assessments = []
+            for assessment in user["assessments"]:
+                if not assessment:
+                    continue
+                elif assessment["question"] not in assessment_questions_3:
+                    continue
+                current_assessments.append(assessment)
+            if current_assessments:
+                user["assessments"] = current_assessments
+                valid_users.append(user)
+        cluster = self.kmeans_clustering()
+        # Merge the valid users with their cluster information
+        valid_users_df = pd.DataFrame(valid_users)
+        valid_users_clustered = pd.merge(valid_users_df, cluster[['user_id', 'cluster']], on='user_id')
 
-      # Split the users based on their clusters
-      cluster_0_users = valid_users_clustered[valid_users_clustered['cluster'] == 0]
-      cluster_1_users = valid_users_clustered[valid_users_clustered['cluster'] == 1]
-      cluster_2_users = valid_users_clustered[valid_users_clustered['cluster'] == 2]
+        # Split the users based on their clusters
+        cluster_0_users = valid_users_clustered[valid_users_clustered['cluster'] == 0]
+        cluster_1_users = valid_users_clustered[valid_users_clustered['cluster'] == 1]
+        cluster_2_users = valid_users_clustered[valid_users_clustered['cluster'] == 2]
 
-      # Convert the question sequences to matrices for each cluster
-      question_ids = assessment_questions_3
-      cluster_0_matrix = self.convert_question_sequence_to_matrix(cluster_0_users.to_dict('records'), question_ids)
-      cluster_1_matrix = self.convert_question_sequence_to_matrix(cluster_1_users.to_dict('records'), question_ids)
-      cluster_2_matrix = self.convert_question_sequence_to_matrix(cluster_2_users.to_dict('records'), question_ids)
-       
+        # Convert the question sequences based on encoding type
+        question_ids = assessment_questions_3
+        if encoding_type == 'one_hot':
+            cluster_0_data = self.encode_question_one_hot(cluster_0_users.to_dict('records'), question_ids)
+            cluster_1_data = self.encode_question_one_hot(cluster_1_users.to_dict('records'), question_ids)
+            cluster_2_data = self.encode_question_one_hot(cluster_2_users.to_dict('records'), question_ids)
+        elif encoding_type == 'ordinal':
+            cluster_0_data = self.encode_question_ordinal(cluster_0_users.to_dict('records'), question_ids)
+            cluster_1_data = self.encode_question_ordinal(cluster_1_users.to_dict('records'), question_ids)
+            cluster_2_data = self.encode_question_ordinal(cluster_2_users.to_dict('records'), question_ids)
+        else:
+            raise ValueError("encoding_type must be either 'one_hot' or 'ordinal'")
 
-      return [cluster_0_matrix, cluster_1_matrix, cluster_2_matrix]
+        return [cluster_0_data, cluster_1_data, cluster_2_data]
 
 if __name__ == "__main__":
     data_analysis = DataAnalysis()
