@@ -31,6 +31,7 @@ Key Design Principles:
 Function: get_next_question()
 Location: markov_predictor.py -> MarkovPredictor class
 Purpose: Get personalized next question recommendation for a student
+Note: If you want to recommend based on question content similarity, you can use get_next_question_by_similarity instead of get_next_question.
 
 SIGNATURE:
     get_next_question(

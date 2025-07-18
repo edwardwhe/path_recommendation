@@ -95,6 +95,7 @@ class MarkovPredictor:
             # Fallback: return random question from unit
             return random.choice(unit_questions)
     
+    
     def get_next_question_by_similarity(self, student_id: str, transition_matrix: np.ndarray, 
                          unit_questions: List[str], unit: int, encoding_type: str,
                          index_to_state: Optional[Any] = None, 
