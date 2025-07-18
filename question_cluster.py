@@ -39,6 +39,59 @@ def calculate_distance_matrix(context_embeddings, learning_objective_embeddings,
     total_distance = (context_distance + learning_obj_distance + length_distance) / 3
     return total_distance
 
+def calculate_similarity(last_done_idx, undone_indices, unit_questions, tokenizer=None, bert_model=None):
+    if not undone_indices:
+        return -1
+
+    client = get_mongo_client()
+    db = client['pro_mathaday_assessment']
+    collection = db["assessment_questions"]
+    undone_ids = [unit_questions[idx] for idx in undone_indices]
+    last_done_id = unit_questions[last_done_idx]
+    all_ids = [last_done_id] + undone_ids
+    cursor = collection.find({'itemId': {'$in': all_ids}})
+    id2doc = {}
+    for doc in cursor:
+        itemId = doc['itemId']
+        description = doc['description']['en']
+        mathObjectives = ','.join(doc['mathObjectives'])
+        id2doc[itemId] = {
+            'itemid': itemId,
+            'question_context': description,
+            'learning_objective': mathObjectives,
+            'question_length': len(description.split())
+        }
+    
+    questions = [id2doc[qid] for qid in all_ids]
+
+    if tokenizer is None:
+        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    if bert_model is None:
+        bert_model = BertModel.from_pretrained('bert-base-uncased')
+
+    context_embeddings = []
+    learning_objective_embeddings = []
+    length_embeddings = []
+
+    for question in questions:
+        context_emb = encode_text(tokenizer, bert_model, question['question_context'])
+        learning_obj_emb = encode_text(tokenizer, bert_model, question['learning_objective'])
+        length_emb = np.array([question['question_length']])
+        context_embeddings.append(context_emb)
+        learning_objective_embeddings.append(learning_obj_emb)
+        length_embeddings.append(length_emb)
+
+    context_embeddings = np.array(context_embeddings)
+    learning_objective_embeddings = np.array(learning_objective_embeddings)
+    length_embeddings = np.array(length_embeddings)
+
+    distance_matrix = calculate_distance_matrix(context_embeddings, learning_objective_embeddings, length_embeddings)
+    distances = distance_matrix[0, 1:]
+    min_idx = np.argmin(distances)
+    best_idx = undone_indices[min_idx]
+
+    return best_idx
+
 if __name__ == '__main__':
     client = get_mongo_client()
     db = client['pro_mathaday_assessment']

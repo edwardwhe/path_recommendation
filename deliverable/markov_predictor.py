@@ -5,6 +5,7 @@ from typing import List, Dict, Tuple, Optional, Any, Union
 import os
 from pymongo import MongoClient
 from datetime import datetime
+from question_cluster import calculate_similarity
 
 class MarkovPredictor:
     """
@@ -94,6 +95,56 @@ class MarkovPredictor:
             # Fallback: return random question from unit
             return random.choice(unit_questions)
     
+    def get_next_question_by_similarity(self, student_id: str, transition_matrix: np.ndarray, 
+                         unit_questions: List[str], unit: int, encoding_type: str,
+                         index_to_state: Optional[Any] = None, 
+                         state_to_index: Optional[Any] = None) -> str:
+        
+        """
+        Get the next question for a student based on similarity of questions.
+        Loads student data from database only (online mode).
+        
+        Args:
+            student_id: String ID of the student.
+            transition_matrix: Markov transition matrix.
+            unit_questions: List of questions used to encode the state order by ID.
+            unit: The unit number for prediction.
+            encoding_type: 'ordinal' or 'one_hot'.
+            index_to_state: Mapping from index to state (for one_hot encoding).
+            state_to_index: Mapping from state to index (for one_hot encoding).
+            
+        Returns:
+            question_id: The ID of the next question.
+        """
+        
+        # Set the model parameters
+        self.transition_matrix = transition_matrix
+        self.unit_questions = unit_questions
+        self.index_to_state = index_to_state
+        self.state_to_index = state_to_index
+        self.encoding_type = encoding_type
+        
+        # Get student's current sequence in the unit
+        student_sequence = self._get_student_sequence(student_id, unit, unit_questions)
+
+        if not student_sequence:
+            # If no sequence found, return first question or random question
+            if unit_questions:
+                return unit_questions[0]
+            else:
+                raise ValueError(f"No questions available for unit {unit}")
+            
+        # predict next question by similarity
+        done_indices = set(student_sequence)
+        all_indices = set(range(len(unit_questions)))
+        undone_indices = list(all_indices-done_indices)
+        last_done = student_sequence[-1]
+        if not undone_indices:
+            return '-1'
+
+        best_idx = calculate_similarity(last_done, undone_indices,unit_questions)
+        return unit_questions[best_idx]
+
     def _get_student_sequence(self, student_id: str, unit: int, unit_questions: List[str]) -> List[Union[int, List[int]]]:
         """
         Get the student's sequence of questions in the specified unit.
